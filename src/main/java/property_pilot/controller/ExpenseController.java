@@ -4,10 +4,13 @@ import property_pilot.model.Expense;
 import property_pilot.model.Property;
 import property_pilot.repository.ExpenseRepository;
 import property_pilot.repository.PropertyRepository;
+import property_pilot.service.FileStorageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -25,6 +28,9 @@ public class ExpenseController {
 
     @Autowired
     private PropertyRepository propertyRepository;
+
+    @Autowired
+    private FileStorageService fileStorageService;
 
     // Get all expenses
     @GetMapping
@@ -73,5 +79,37 @@ public class ExpenseController {
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.notFound().build();
+    }
+
+    // Upload a receipt to an expense
+    @PostMapping("/{id}/upload")
+    public ResponseEntity<String> uploadReceipt(
+            @PathVariable Long id,
+            @RequestParam("file") MultipartFile file) {
+
+        // Check expense exists
+        Optional<Expense> expenseOpt = expenseRepository.findById(id);
+        if (expenseOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Expense expense = expenseOpt.get();
+
+        try {
+            // Store file
+            String relativePath = fileStorageService.storeFile(
+                    expense.getProperty().getId(),
+                    expense.getId(),
+                    file);
+
+            // Save the receipt path
+            expense.setReceiptPath(relativePath);
+            expenseRepository.save(expense);
+
+            return ResponseEntity.ok("File uploaded successfully");
+        } catch (IOException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Failed to store file: " + e.getMessage());
+        }
     }
 }
