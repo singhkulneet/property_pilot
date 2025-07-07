@@ -185,4 +185,88 @@ public class ExpenseControllerTest {
         }
         assertThat(receiptPathFound).isTrue();
     }
-}
+
+    @Test
+    void testDownloadReceipt() {
+        // Step 1: Create a property
+        Map<String, String> newProperty = Map.of(
+                "name", "Download Property",
+                "address", "123 Download St",
+                "notes", "Test property for download"
+        );
+
+        ResponseEntity<Map> propertyResponse = restTemplate.postForEntity(
+                getBaseUrl("/api/properties"),
+                newProperty,
+                Map.class
+        );
+
+        assertThat(propertyResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Integer propertyId = (Integer) propertyResponse.getBody().get("id");
+        assertThat(propertyId).isNotNull();
+
+        // Step 2: Create an expense linked to the property
+        Map<String, Object> newExpense = Map.of(
+                "property", Map.of("id", propertyId),
+                "date", LocalDate.now().toString(),
+                "category", "utilities",
+                "amount", new BigDecimal("50.00"),
+                "description", "Test download expense"
+        );
+
+        ResponseEntity<Map> expenseResponse = restTemplate.postForEntity(
+                getBaseUrl("/api/expenses"),
+                newExpense,
+                Map.class
+        );
+
+        assertThat(expenseResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Integer expenseId = (Integer) expenseResponse.getBody().get("id");
+        assertThat(expenseId).isNotNull();
+
+        // Step 3: Upload a test file
+        byte[] fileContent = "Test download receipt.".getBytes();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", new ByteArrayResource(fileContent) {
+            @Override
+            public String getFilename() {
+                return "download_receipt.txt";
+            }
+        });
+
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+
+        ResponseEntity<String> uploadResponse = restTemplate.postForEntity(
+                getBaseUrl("/api/expenses/" + expenseId + "/upload"),
+                requestEntity,
+                String.class
+        );
+
+        assertThat(uploadResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // Step 4: Download the receipt
+        ResponseEntity<byte[]> downloadResponse = restTemplate.getForEntity(
+                getBaseUrl("/api/expenses/" + expenseId + "/receipt"),
+                byte[].class
+        );
+
+        assertThat(downloadResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(downloadResponse.getHeaders().getContentType()).isEqualTo(MediaType.TEXT_PLAIN);
+        assertThat(downloadResponse.getBody()).isNotNull();
+        assertThat(new String(downloadResponse.getBody())).contains("Test download receipt.");
+    }
+
+    @Test
+    void testDownloadReceiptNotFound() {
+        ResponseEntity<byte[]> response = restTemplate.getForEntity(
+            getBaseUrl("/api/expenses/9999/receipt"),
+            byte[].class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+} // END: public class ExpenseControllerTest 

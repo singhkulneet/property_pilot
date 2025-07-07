@@ -113,7 +113,7 @@ public class ExpenseController {
             expense.setReceiptPath(relativePath);
             expenseRepository.save(expense);
 
-            return ResponseEntity.ok("File uploaded successfully");
+            return ResponseEntity.ok("File uploaded successfully at " + Path.of(baseDir,relativePath).toString());
         } catch (IOException e) {
             e.printStackTrace();
             return ResponseEntity.status(500).body("Failed to store file: " + e.getMessage());
@@ -157,4 +157,48 @@ public class ExpenseController {
             return ResponseEntity.internalServerError().build();
         }
     }
-}
+
+    private boolean isDirectoryEmpty(Path directory) throws IOException {
+        try (var dirStream = Files.newDirectoryStream(directory)) {
+            return !dirStream.iterator().hasNext();
+        }
+    }
+
+    @DeleteMapping("/{id}/receipt")
+    public ResponseEntity<String> deleteReceipt(@PathVariable Long id) {
+        Optional<Expense> expenseOpt = expenseRepository.findById(id);
+        if (expenseOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Expense expense = expenseOpt.get();
+        String receiptPath = expense.getReceiptPath();
+        if (receiptPath == null || receiptPath.isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Path filePath = Path.of(baseDir, receiptPath);
+        Path expenseDir = filePath.getParent();
+
+        try {
+            if (Files.exists(filePath)) {
+                Files.delete(filePath);
+            }
+
+            // If the expense directory is now empty, delete it
+            if (Files.isDirectory(expenseDir) && isDirectoryEmpty(expenseDir)) {
+                Files.delete(expenseDir);
+            }
+
+            // Clear the receiptPath
+            expense.setReceiptPath(null);
+            expenseRepository.save(expense);
+
+            return ResponseEntity.ok("Receipt and folder deleted successfully for file: " + filePath.getFileName());
+
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError()
+                    .body("Error deleting receipt: " + e.getMessage());
+        }
+    }
+} // END: public class ExpenseController {

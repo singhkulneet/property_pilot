@@ -63,8 +63,9 @@ public class FileStorageService {
     private String toSlug(String input) {
         String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
         String slug = Pattern.compile("\\p{InCombiningDiacriticalMarks}+").matcher(normalized).replaceAll("");
-        slug = slug.replaceAll("[^a-zA-Z0-9\\s]", ""); // remove special characters
-        slug = slug.trim().replaceAll("\\s+", "_");   // replace spaces with underscores
+        // Allow underscores and hyphens
+        slug = slug.replaceAll("[^a-zA-Z0-9\\s_-]", ""); // note the _ and - inside the brackets
+        slug = slug.trim().replaceAll("\\s+", "_");
         return slug;
     }
 }
