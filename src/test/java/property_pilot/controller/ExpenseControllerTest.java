@@ -13,6 +13,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Map;
@@ -268,5 +269,105 @@ public class ExpenseControllerTest {
         );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void testDeleteReceipt() {
+        // Step 1: Create a property
+        Map<String, String> newProperty = Map.of(
+                "name", "Delete Property",
+                "address", "321 Delete St",
+                "notes", "Test property for deletion"
+        );
+
+        ResponseEntity<Map> propertyResponse = restTemplate.postForEntity(
+                getBaseUrl("/api/properties"),
+                newProperty,
+                Map.class
+        );
+
+        assertThat(propertyResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Integer propertyId = (Integer) propertyResponse.getBody().get("id");
+        assertThat(propertyId).isNotNull();
+
+        // Step 2: Create an expense
+        Map<String, Object> newExpense = Map.of(
+                "property", Map.of("id", propertyId),
+                "date", LocalDate.now().toString(),
+                "category", "insurance",
+                "amount", new BigDecimal("75.00"),
+                "description", "Test delete receipt"
+        );
+
+        ResponseEntity<Map> expenseResponse = restTemplate.postForEntity(
+                getBaseUrl("/api/expenses"),
+                newExpense,
+                Map.class
+        );
+
+        assertThat(expenseResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Integer expenseId = (Integer) expenseResponse.getBody().get("id");
+        assertThat(expenseId).isNotNull();
+
+        // Step 3: Upload a test file
+        byte[] fileContent = "Delete test receipt.".getBytes();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", new ByteArrayResource(fileContent) {
+            @Override
+            public String getFilename() {
+                return "delete_receipt.txt";
+            }
+        });
+
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+
+        ResponseEntity<String> uploadResponse = restTemplate.postForEntity(
+                getBaseUrl("/api/expenses/" + expenseId + "/upload"),
+                requestEntity,
+                String.class
+        );
+
+        assertThat(uploadResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // Step 4: Verify the receiptPath exists via API
+        ResponseEntity<Map[]> listResponse = restTemplate.getForEntity(
+                getBaseUrl("/api/expenses"),
+                Map[].class
+        );
+
+        assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        boolean receiptFound = false;
+        for (Map e : listResponse.getBody()) {
+            if (expenseId.equals(e.get("id"))) {
+                Object receiptPath = e.get("receiptPath");
+                assertThat(receiptPath).isNotNull();
+                receiptFound = true;
+            }
+        }
+        assertThat(receiptFound).isTrue();
+
+        // Step 5: Delete the receipt via API
+        restTemplate.delete(getBaseUrl("/api/expenses/" + expenseId + "/receipt"));
+
+        // Step 6: Confirm receiptPath is now null
+        ResponseEntity<Map[]> listAfterDelete = restTemplate.getForEntity(
+                getBaseUrl("/api/expenses"),
+                Map[].class
+        );
+
+        assertThat(listAfterDelete.getStatusCode()).isEqualTo(HttpStatus.OK);
+        boolean receiptCleared = false;
+        for (Map e : listAfterDelete.getBody()) {
+            if (expenseId.equals(e.get("id"))) {
+                Object receiptPath = e.get("receiptPath");
+                assertThat(receiptPath).isNull();
+                receiptCleared = true;
+            }
+        }
+        assertThat(receiptCleared).isTrue();
     }
 } // END: public class ExpenseControllerTest 
