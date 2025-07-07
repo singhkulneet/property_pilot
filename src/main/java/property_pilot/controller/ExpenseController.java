@@ -6,15 +6,23 @@ import property_pilot.repository.ExpenseRepository;
 import property_pilot.repository.PropertyRepository;
 import property_pilot.service.FileStorageService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.UrlResource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.MalformedURLException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.nio.file.Path;
+import java.nio.file.Files;
 
 /**
  * REST endpoints to manage expenses.
@@ -31,6 +39,9 @@ public class ExpenseController {
 
     @Autowired
     private FileStorageService fileStorageService;
+
+    @Value("${property_pilot.receipts.base-dir}")
+    private String baseDir;
 
     // Get all expenses
     @GetMapping
@@ -97,11 +108,7 @@ public class ExpenseController {
 
         try {
             // Store file
-            String relativePath = fileStorageService.storeFile(
-                    expense.getProperty().getId(),
-                    expense.getId(),
-                    file);
-
+            String relativePath = fileStorageService.storeFile(expense, file);
             // Save the receipt path
             expense.setReceiptPath(relativePath);
             expenseRepository.save(expense);
@@ -110,6 +117,44 @@ public class ExpenseController {
         } catch (IOException e) {
             e.printStackTrace();
             return ResponseEntity.status(500).body("Failed to store file: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/{id}/receipt")
+    public ResponseEntity<Resource> downloadReceipt(@PathVariable Long id) {
+        Optional<Expense> expenseOpt = expenseRepository.findById(id);
+        if (expenseOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Expense expense = expenseOpt.get();
+        String receiptPath = expense.getReceiptPath();
+        if (receiptPath == null || receiptPath.isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Path filePath = Path.of(baseDir, receiptPath);
+        if (!Files.exists(filePath)) {
+            return ResponseEntity.notFound().build();
+        }
+
+        try {
+            Resource resource = new UrlResource(filePath.toUri());
+            String contentType = Files.probeContentType(filePath);
+            if (contentType == null) {
+                contentType = "application/octet-stream";
+            }
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + resource.getFilename() + "\"")
+                    .body(resource);
+
+        } catch (MalformedURLException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
         }
     }
 }

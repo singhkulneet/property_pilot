@@ -5,10 +5,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import property_pilot.model.Expense;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.text.Normalizer;
+import java.util.regex.Pattern;
 
 /**
  * Handles saving receipt files to disk.
@@ -19,14 +23,26 @@ public class FileStorageService {
     @Value("${property_pilot.receipts.base-dir}")
     private String baseDir;
 
-    public String storeFile(Long propertyId, Long expenseId, MultipartFile file) throws IOException {
-        // Build the directory path
-        Path dirPath = Path.of(baseDir, propertyId.toString(), expenseId.toString());
+    /**
+     * Stores a file under /{propertyId}_{propertySlug}/{expenseId}_{expenseSlug}/
+     * Returns the relative path to store in the DB.
+     */
+    public String storeFile(Expense expense, MultipartFile file) throws IOException {
+        // Generate slugs
+        String propertySlug = toSlug(expense.getProperty().getName());
+        String expenseSlug = toSlug(expense.getCategory() + "_" + expense.getDate().toString());
+
+        // Build directory path
+        Path dirPath = Path.of(
+                baseDir,
+                expense.getProperty().getId() + "_" + propertySlug,
+                expense.getId() + "_" + expenseSlug
+        );
 
         // Create directories if needed
         Files.createDirectories(dirPath);
 
-        // Clean file name
+        // Clean filename
         String fileName = StringUtils.cleanPath(file.getOriginalFilename());
 
         // Destination path
@@ -35,7 +51,20 @@ public class FileStorageService {
         // Save the file
         Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
 
-        // Return the relative path for saving in the DB
-        return propertyId + "/" + expenseId + "/" + fileName;
+        // Return relative path (e.g., "1_Main_Street_Duplex/2_July_Mortgage/receipt.pdf")
+        return expense.getProperty().getId() + "_" + propertySlug + "/"
+                + expense.getId() + "_" + expenseSlug + "/"
+                + fileName;
+    }
+
+    /**
+     * Converts text to a filesystem-safe slug.
+     */
+    private String toSlug(String input) {
+        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
+        String slug = Pattern.compile("\\p{InCombiningDiacriticalMarks}+").matcher(normalized).replaceAll("");
+        slug = slug.replaceAll("[^a-zA-Z0-9\\s]", ""); // remove special characters
+        slug = slug.trim().replaceAll("\\s+", "_");   // replace spaces with underscores
+        return slug;
     }
 }
