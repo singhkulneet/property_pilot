@@ -194,7 +194,7 @@ public class ExpenseController {
             expense.setReceiptPath(null);
             expenseRepository.save(expense);
 
-            return ResponseEntity.ok("Receipt and folder deleted successfully for file: " + filePath.getFileName());
+            return ResponseEntity.ok("Receipt and folder deleted successfully for file: " + Path.of(baseDir,receiptPath).toString());
 
         } catch (IOException e) {
             return ResponseEntity.internalServerError()

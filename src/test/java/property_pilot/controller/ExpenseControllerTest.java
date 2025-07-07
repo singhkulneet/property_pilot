@@ -1,5 +1,6 @@
 package property_pilot.controller;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -7,6 +8,7 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.core.io.ByteArrayResource;
@@ -18,6 +20,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration tests for ExpenseController.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
 @Transactional
 public class ExpenseControllerTest {
 
@@ -36,6 +42,23 @@ public class ExpenseControllerTest {
 
     private String getBaseUrl(String path) {
         return "http://localhost:" + port + path;
+    }
+
+    @BeforeEach
+    void cleanTestDirectory() throws IOException {
+        Path testDir = Path.of("/tmp/property_pilot_test/receipts");
+        if (Files.exists(testDir)) {
+            try (Stream<Path> walk = Files.walk(testDir)) {
+                walk.sorted((a, b) -> b.compareTo(a)) // delete children before parents
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException e) {
+                            throw new RuntimeException("Failed to delete " + path, e);
+                        }
+                    });
+            }
+        }
     }
 
     @Test
