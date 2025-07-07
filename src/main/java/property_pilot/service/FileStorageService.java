@@ -8,6 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 import property_pilot.model.Expense;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -42,14 +43,17 @@ public class FileStorageService {
         // Create directories if needed
         Files.createDirectories(dirPath);
 
-        // Clean filename
-        String fileName = StringUtils.cleanPath(file.getOriginalFilename());
+        // Clean filename to prevent path traversal and nested folders
+        String filenameOnly = Path.of(file.getOriginalFilename()).getFileName().toString();
+        String fileName = StringUtils.cleanPath(filenameOnly);
 
         // Destination path
         Path targetPath = dirPath.resolve(fileName);
 
         // Save the file
-        Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        try (InputStream inputStream = file.getInputStream()) {
+            Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        }
 
         // Return relative path (e.g., "1_Main_Street_Duplex/2_July_Mortgage/receipt.pdf")
         return expense.getProperty().getId() + "_" + propertySlug + "/"
